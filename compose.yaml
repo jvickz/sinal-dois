@@ -1,0 +1,33 @@
+name: reserva-estoque
+services:
+  api:
+    build: .
+    ports:
+      - "127.0.0.1:${RESERVA_PORT:-8090}:8080"
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      SPRING_PROFILES_ACTIVE: demo
+      DB_URL: jdbc:postgresql://database:5432/reserva
+      DB_USER: reserva
+      DB_PASSWORD: reserva-local
+      RESERVATION_TTL: ${RESERVATION_TTL:-2m}
+    depends_on:
+      database:
+        condition: service_healthy
+
+  database:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: reserva
+      POSTGRES_USER: reserva
+      POSTGRES_PASSWORD: reserva-local
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  postgres-data:
