@@ -1,5 +1,7 @@
 # Sinal Dois · Loja de eletrônicos
 
+[![Testes no GitHub Actions](https://github.com/jvickz/sinal-dois/actions/workflows/ci.yml/badge.svg)](https://github.com/jvickz/sinal-dois/actions/workflows/ci.yml)
+
 Dois clientes encontram o último iPhone e finalizam a compra ao mesmo tempo. A Sinal Dois reserva a unidade para um deles e informa o saldo ao outro. O projeto reúne uma loja em React e TypeScript e uma plataforma de pedidos em Java e PostgreSQL, do catálogo à expedição.
 
 ![Loja Sinal Dois com o iPhone em destaque e o início do catálogo de eletrônicos](docs/loja.webp)
@@ -20,7 +22,7 @@ Em um volume novo, o perfil `demo` inicializa `IPHONE-15-128` com uma unidade e 
 
 ## Vitrine e identidade visual
 
-A vitrine alterna entre iPhone 15, PlayStation 5 Slim e MacBook Air M3. Os produtos ocupam a direita da capa sobre grafite, com detalhes em laranja e tipografia branca. O catálogo usa fundo claro para comparar os seis modelos, incluindo o ThinkPad T14, o Nintendo Switch OLED e o Mac mini M4. Cada ficha apresenta marca, preço, especificações e disponibilidade.
+A vitrine alterna entre iPhone 15, PlayStation 5 Slim e MacBook Air M3. A busca por produto, marca e especificações funciona junto com os filtros de categoria. Cada ficha apresenta preço e disponibilidade. [Loja no celular](docs/loja-mobile.webp) · [Painel de operações](docs/operacoes.webp)
 
 Na abertura de cada destaque, a foto aproxima-se do enquadramento final enquanto o título sobe. A luz acompanha o ponteiro e os botões permitem trocar de produto. Essa composição adapta o movimento do ZEN. A entrada dos cartões quando aparecem na tela veio do Northstar. Os dois protótipos são de Liana Pepanyan. A loja aceita setas do teclado e gestos de toque e respeita a preferência de movimento reduzido. As imagens foram geradas para este projeto. [ZEN](https://zen-customizable-webgl-shader-agency-template-v2.21st.app) · [Northstar](https://northstar-template-demo.vercel.app/) · [Galeria de agências do 21st.dev](https://21st.dev/community/templates/s/agency)
 
@@ -56,6 +58,27 @@ O fluxo de confirmação muda a reserva para `CONFIRMED` e mantém o débito. As
 
 ## Decisões técnicas
 
+O Spring Boot serve a aplicação React e a API REST na mesma origem. O PostgreSQL guarda estoque, pedidos, sessões e a fila de pagamentos. O worker consulta a fila e atualiza a situação do pedido para a loja e para o painel.
+
+~~~mermaid
+sequenceDiagram
+    participant B as Comprador
+    participant A as API Spring Boot
+    participant D as PostgreSQL
+    participant W as Worker
+    participant O as Operador
+    B->>A: Finaliza carrinho com chave de idempotência
+    A->>D: Reserva todos os itens e grava o pedido
+    A-->>B: Pedido aguardando pagamento
+    B->>A: Simula aprovação
+    A->>D: Enfileira evento
+    W->>D: Processa evento e registra pedido pago
+    O->>A: Confirma separação e expedição
+    A->>D: Atualiza pedido e histórico
+    B->>A: Consulta o acompanhamento
+    A-->>B: Pedido expedido
+~~~
+
 | Decisão | Comportamento observável |
 | --- | --- |
 | Débito condicional no PostgreSQL | A atualização só é aplicada se houver unidades suficientes. A restrição do banco protege o saldo contra valores negativos. |
@@ -86,7 +109,7 @@ python -m playwright install chromium
 python tests/browser/test_commerce.py
 ```
 
-Defina `COMMERCE_BASE_URL` se a demonstração estiver em outra porta. O Playwright usa dois compradores em sessões independentes e um operador. A suíte verifica teclado no desktop, gesto de toque e movimento reduzido no celular, ficha técnica, disputa da última unidade e devolução do saldo após recusa. Para salvar as capturas de desktop, celular, acompanhamento e operações, defina `COMMERCE_SCREENSHOTS` com a pasta de destino. O workflow do GitHub Actions executa a suíte Java e os testes da loja no navegador.
+Defina `COMMERCE_BASE_URL` se a demonstração estiver em outra porta. O Playwright usa dois compradores em sessões independentes e um operador. A suíte verifica busca e filtros, teclado no desktop, toque e movimento reduzido no celular, ficha técnica, disputa pela última unidade e devolução do saldo após recusa. Para salvar capturas localmente, defina `COMMERCE_SCREENSHOTS` com a pasta de destino. O GitHub Actions executa as suítes Java e Playwright e disponibiliza as capturas de cada execução.
 
 ### Linha para o currículo
 

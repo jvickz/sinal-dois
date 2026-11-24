@@ -8,6 +8,7 @@ import {
   Laptop,
   Monitor,
   Plus,
+  Search,
   Smartphone,
   X,
 } from 'lucide-react'
@@ -30,6 +31,13 @@ const stockLabel = (available: number) =>
     : available === 1
       ? 'Última unidade'
       : available + ' disponíveis'
+
+function searchText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLocaleLowerCase('pt-BR')
+}
 
 function ProductSheet({
   product,
@@ -215,6 +223,7 @@ export function Storefront({
   change,
 }: StockProps) {
   const [category, setCategory] = useState('')
+  const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState('')
   const timer = useRef<number | undefined>(undefined)
@@ -223,10 +232,19 @@ export function Storefront({
   const categories = Array.from(
     new Set(products.map((product) => product.category)),
   )
-  const visible = category
-    ? products.filter((product) => product.category === category)
-    : products
+  const terms = searchText(query.trim()).split(/\s+/).filter(Boolean)
+  const visible = products.filter((product) => {
+    if (category && product.category !== category) return false
+    if (!terms.length) return true
+    const searchable = searchText(
+      [product.name, product.brand, product.category, ...product.specs].join(
+        ' ',
+      ),
+    )
+    return terms.every((term) => searchable.includes(term))
+  })
   const selectedProduct = products.find((product) => product.sku === selected)
+  const search = useRef<HTMLInputElement>(null)
   function add(product: Product) {
     const quantity = cart[product.sku] ?? 0
     if (quantity >= product.available) return
@@ -255,35 +273,63 @@ export function Storefront({
           )}
         </div>
         {categories.length > 0 && (
-          <div
-            className="gear-filters"
-            role="group"
-            aria-label="Categorias de produtos"
-          >
-            {['', ...categories].map((value) => {
-              const label = value || 'Todos'
-              const Icon =
-                categoryIcons[label as keyof typeof categoryIcons] ?? Grid2X2
-              return (
-                <button
-                  key={label}
-                  onClick={() => setCategory(value)}
-                  aria-pressed={category === value}
-                >
-                  <Icon size={16} aria-hidden="true" />
-                  {label}
-                </button>
-              )
-            })}
+          <div className="catalog-controls">
+            <div
+              className="gear-filters"
+              role="group"
+              aria-label="Categorias de produtos"
+            >
+              {['', ...categories].map((value) => {
+                const label = value || 'Todos'
+                const Icon =
+                  categoryIcons[label as keyof typeof categoryIcons] ?? Grid2X2
+                return (
+                  <button
+                    key={label}
+                    onClick={() => setCategory(value)}
+                    aria-pressed={category === value}
+                  >
+                    <Icon size={16} aria-hidden="true" />
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+            <label className="catalog-search">
+              <Search size={17} aria-hidden="true" />
+              <span className="sr-only">Buscar produtos</span>
+              <input
+                ref={search}
+                type="search"
+                placeholder="Buscar produtos"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
           </div>
         )}
         {error && <Notice retry={reload}>{error}</Notice>}
         {!catalog && !error && <Loading>Carregando o catálogo…</Loading>}
-        {catalog && !visible.length && (
-          <Empty title="Nenhum produto disponível">
-            <p>Esta seleção está vazia no momento.</p>
-          </Empty>
-        )}
+        {catalog &&
+          !visible.length &&
+          (category || terms.length ? (
+            <Empty icon={<Search />} title="Nenhum produto encontrado">
+              <button
+                className="button secondary"
+                onClick={() => {
+                  setCategory('')
+                  setQuery('')
+                  search.current?.focus()
+                }}
+              >
+                Limpar filtros
+              </button>
+            </Empty>
+          ) : (
+            <Empty title="Nenhum produto disponível">
+              <p>Esta seleção está vazia no momento.</p>
+            </Empty>
+          ))}
         <div className="gear-grid">
           {visible.map((product) => (
             <ProductCard

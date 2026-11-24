@@ -9,3 +9,5 @@ target
 web/node_modules
 web/dist
 tests
+artifacts
+docs
