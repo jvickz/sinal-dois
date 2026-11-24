@@ -11,6 +11,7 @@ services:
       DB_USER: reserva
       DB_PASSWORD: reserva-local
       RESERVATION_TTL: ${RESERVATION_TTL:-2m}
+      COMMERCE_OPERATOR_PASSWORD: ${COMMERCE_OPERATOR_PASSWORD:-demo-operacoes}
     depends_on:
       database:
         condition: service_healthy

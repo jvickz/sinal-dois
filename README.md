@@ -1,6 +1,6 @@
-# Reserva de Estoque
+# Casa Torra · Plataforma de pedidos e estoque
 
-API de reservas temporárias em Java e PostgreSQL. Duas compras podem disputar a última unidade. O PostgreSQL decide qual reserva é criada, e a API devolve um conflito à outra compra. Reenviar o mesmo pedido com a mesma chave recupera a reserva existente, com um único débito de estoque.
+Loja de demonstração com checkout, acompanhamento de pedidos e painel de operações. A mesma base PostgreSQL atende o checkout e a API de reserva individual. A última unidade de um produto só pode pertencer a uma compra por vez.
 
 ## Executar a demonstração
 
@@ -10,11 +10,30 @@ Com Docker e Docker Compose em execução, rode na pasta do projeto.
 docker compose up --build -d
 ```
 
-Abra [Swagger UI](http://127.0.0.1:8090/swagger-ui.html). O Swagger permite executar as requisições e inspecionar os status e corpos das respostas. A API está acessível na interface local. O banco usa um volume Docker e fica na rede interna do Compose.
+[Abrir a loja](http://127.0.0.1:8090/) · [Painel de operações](http://127.0.0.1:8090/?area=operacoes) · [Swagger UI](http://127.0.0.1:8090/swagger-ui.html)
 
-O perfil `demo` inicializa `CAFE-250G` com uma unidade e `FILTRO-01` com dez. A porta do host pode ser alterada com `RESERVA_PORT`. O prazo padrão é de dois minutos, configurável por `RESERVATION_TTL`, por exemplo `30s` para uma demonstração mais curta.
+Para entrar no painel, use `operador` e `demo-operacoes`. O pagamento é simulado e o catálogo usa produtos fictícios. A interface e a API são servidas pela mesma origem na máquina local. O banco roda na rede do Compose, com sessões e dados persistidos em volume.
 
-## Roteiro de dois minutos
+O perfil `demo` inicializa `CAFE-250G` com uma unidade e `FILTRO-01` com dez. A porta do host usa `RESERVA_PORT`, a senha local do painel usa `COMMERCE_OPERATOR_PASSWORD` e o prazo padrão de dois minutos pode ser alterado com `RESERVATION_TTL`.
+
+## Roteiro da loja até a expedição
+
+1. Abra a loja em uma janela comum e outra privativa. Em ambas, coloque o café com uma unidade disponível no carrinho.
+2. Finalize os dois checkouts. Um cria o pedido e reserva a unidade. O outro mostra o item indisponível.
+3. No pedido criado, simule a aprovação do pagamento e reenvie o mesmo evento. A aprovação aparece uma vez no histórico.
+4. Entre no painel e avance o pedido pago com **Separar pedido** e depois **Expedir pedido**. Veja a linha do tempo atualizar na loja.
+5. Faça outro pedido com filtros. Simule a recusa ou deixe o prazo vencer. Consulte o catálogo para conferir as unidades devolvidas.
+
+Para repetir com dados iniciais, use outro nome de projeto Compose e uma porta disponível.
+
+```powershell
+$env:RESERVA_PORT = '8091'
+docker compose -p casa-torra-demo-2 up --build -d
+```
+
+Abra `http://127.0.0.1:8091/`. `docker compose -p casa-torra-demo-2 down` encerra essa instância e preserva seus dados no volume.
+
+## API de reserva individual
 
 1. Em `GET /api/v1/inventory/{sku}`, consulte `CAFE-250G` e confira o saldo inicial.
 2. Em `POST /api/v1/reservations`, use uma chave nova, como `checkout-001`, no cabeçalho `Idempotency-Key`. Envie `{"sku":"CAFE-250G","quantity":1}`. A resposta `201` informa o ID, o estado `HELD` e o prazo em UTC.
@@ -32,6 +51,9 @@ O fluxo de confirmação muda a reserva para `CONFIRMED` e mantém o débito. As
 | Chave de idempotência única | Retentativas simultâneas recuperam a mesma reserva. O mesmo identificador com outro SKU ou quantidade retorna `409`. Uma tentativa recusada pode ser repetida depois de repor o saldo. |
 | Bloqueio da linha da reserva | Confirmação, cancelamento e expiração verificam o estado e o prazo após adquirir o bloqueio. A devolução do saldo ocorre na mesma transação da mudança de estado. |
 | Worker em lotes | O worker consulta reservas vencidas persistidas e retoma a expiração após reiniciar. A consulta HTTP mostra o estado armazenado e o prazo em UTC. |
+| Checkout com vários itens | O servidor registra preço e quantidade no pedido. A transação reserva todos os itens ou reverte todos os débitos. Os SKUs são processados em ordem consistente. |
+| Pagamento assíncrono | O simulador grava eventos em uma fila PostgreSQL. O worker bloqueia o evento e o pedido, verifica o prazo e grava o resultado e o saldo na mesma transação. |
+| Sessões e operação | As sessões persistem no PostgreSQL. Cada comprador acompanha seus próprios pedidos, e separação e expedição exigem acesso de operador. |
 
 O [documento OpenAPI](http://127.0.0.1:8090/v3/api-docs) descreve o contrato HTTP. As falhas de validação e de regra de negócio usam `application/problem+json` e um campo `code` para distinguir as causas. Para observar a aplicação, consulte [saúde](http://127.0.0.1:8090/actuator/health) e [contadores de reservas](http://127.0.0.1:8090/actuator/metrics/inventory.reservations.events) no Actuator. Os contadores representam o processo atual.
 
@@ -43,8 +65,18 @@ Com Java 21, Maven e Docker em execução, rode:
 mvn -B -ntp verify
 ```
 
-O Surefire verifica as regras de prazo com um relógio controlado. O Failsafe executa testes HTTP contra PostgreSQL 18 isolado por Testcontainers. Os testes cobrem a concorrência pela última unidade, o reenvio, a disputa entre confirmação e cancelamento e a devolução por expiração. O workflow de GitHub Actions executa o mesmo comando.
+O Surefire verifica as regras de prazo com um relógio controlado. O Failsafe executa testes HTTP contra PostgreSQL 18 isolado por Testcontainers. Para verificar o frontend com Node.js 24, rode `npm ci` e `npm run build` em `web/`.
+
+Os testes de navegador usam dados fictícios recém-carregados. Depois de subir o Compose, rode:
+
+```sh
+python -m pip install -r tests/browser/requirements.txt
+python -m playwright install chromium
+python tests/browser/test_commerce.py
+```
+
+Defina `COMMERCE_BASE_URL` se a demonstração estiver em outra porta. O workflow do GitHub Actions executa a suíte Java e os testes da loja no navegador.
 
 ### Linha para o currículo
 
-> Desenvolvi uma API Java/Spring Boot de reservas de estoque com Swagger e PostgreSQL. Usei transações para evitar reservas duplicadas ou acima do saldo e cobri concorrência e expiração com testes de integração em Testcontainers.
+> Desenvolvi uma plataforma full-stack de pedidos com React, TypeScript, Spring Boot e PostgreSQL. Implementei reserva transacional de carrinho, processamento idempotente de pagamentos simulados e painel de expedição, com testes automatizados de concorrência e do fluxo no navegador.

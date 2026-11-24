@@ -29,6 +29,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.junit.jupiter.Container;
@@ -41,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 @Testcontainers
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "reservation.expiry.enabled=false")
 @Import(ReservationApiIT.ClockConfiguration.class)
@@ -79,7 +81,9 @@ class ReservationApiIT {
 
     @BeforeEach
     void reset() {
-        jdbc.sql("TRUNCATE reservation_requests, reservations, inventory").update();
+        jdbc.sql("DELETE FROM reservation_requests").update();
+        jdbc.sql("DELETE FROM reservations").update();
+        jdbc.sql("DELETE FROM inventory").update();
         jdbc.sql("INSERT INTO inventory (sku, available) VALUES ('CAFE-250G', 1)").update();
         clock.set(START);
     }

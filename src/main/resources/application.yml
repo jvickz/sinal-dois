@@ -13,9 +13,23 @@ spring:
       accept-float-as-int: false
     mapper:
       allow-coercion-of-scalars: false
+  session:
+    jdbc:
+      initialize-schema: never
 
 server:
   address: ${SERVER_ADDRESS:127.0.0.1}
+  servlet:
+    session:
+      timeout: 12h
+      cookie:
+        http-only: true
+        same-site: strict
+
+commerce:
+  operator-password: ${COMMERCE_OPERATOR_PASSWORD:}
+  worker:
+    interval: 1s
 
 reservation:
   ttl: ${RESERVATION_TTL:2m}

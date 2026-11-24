@@ -6,3 +6,6 @@
 .env
 target
 *.iml
+web/node_modules
+web/dist
+tests
