@@ -45,7 +45,7 @@ class ReservationController {
     @ApiResponse(responseCode = "404", description = "SKU inexistente", content = @Content(
             mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = @Schema(implementation = ProblemDetail.class)))
     @GetMapping("/inventory/{sku}")
-    Stock stock(@Parameter(example = "CAFE-250G") @PathVariable @Pattern(regexp = SKU_FORMAT) String sku) {
+    Stock stock(@Parameter(example = "IPHONE-15-128") @PathVariable @Pattern(regexp = SKU_FORMAT) String sku) {
         return service.stock(sku);
     }
 
@@ -110,6 +110,6 @@ class ReservationController {
     }
 
     record CreateReservation(
-            @Schema(example = "CAFE-250G") @NotNull @Pattern(regexp = SKU_FORMAT) String sku,
+            @Schema(example = "IPHONE-15-128") @NotNull @Pattern(regexp = SKU_FORMAT) String sku,
             @Schema(example = "1") @NotNull @Positive Integer quantity) {}
 }

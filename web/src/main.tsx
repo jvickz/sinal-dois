@@ -5,8 +5,6 @@ import '@fontsource/dm-sans/latin-400.css'
 import '@fontsource/dm-sans/latin-500.css'
 import '@fontsource/dm-sans/latin-600.css'
 import '@fontsource/dm-sans/latin-700.css'
-import '@fontsource/instrument-serif/latin-400.css'
-import '@fontsource/instrument-serif/latin-400-italic.css'
 import { api, type Session } from './api'
 import {
   Brand,
@@ -32,24 +30,30 @@ function App() {
   const catalog = useResource(api.catalog)
   const [cart, setCart] = useState<Cart>(() => readStored('cart', {}))
   const main = useRef<HTMLElement>(null)
+  const previousSearch = useRef(search)
   const previousArea = useRef(area)
   useEffect(() => {
     function changed() {
       setSearch(window.location.search)
-      main.current?.focus({ preventScroll: true })
     }
     window.addEventListener('popstate', changed)
     return () => window.removeEventListener('popstate', changed)
   }, [])
   useEffect(() => {
+    if (previousSearch.current !== search) {
+      previousSearch.current = search
+      main.current?.focus({ preventScroll: true })
+    }
+  }, [search])
+  useEffect(() => {
     document.title =
       ({
-        loja: 'Cafés e utensílios',
+        loja: 'Eletrônicos',
         carrinho: 'Seu carrinho',
         pedidos: 'Meus pedidos',
         pedido: 'Seu pedido',
         operacoes: 'Operações',
-      }[area] ?? 'Loja') + ' · Casa Torra'
+      }[area] ?? 'Loja') + ' · Sinal Dois'
     if (
       previousArea.current !== area &&
       (area === 'loja' || area === 'carrinho')
@@ -61,11 +65,11 @@ function App() {
     const refresh = () => session.reload()
     const renewed = (event: Event) =>
       session.setData((event as CustomEvent<Session>).detail)
-    window.addEventListener('casa-torra:session', refresh)
-    window.addEventListener('casa-torra:session-ready', renewed)
+    window.addEventListener('sinaldois:session', refresh)
+    window.addEventListener('sinaldois:session-ready', renewed)
     return () => {
-      window.removeEventListener('casa-torra:session', refresh)
-      window.removeEventListener('casa-torra:session-ready', renewed)
+      window.removeEventListener('sinaldois:session', refresh)
+      window.removeEventListener('sinaldois:session-ready', renewed)
     }
   }, [session.reload, session.setData])
   function updateCart(next: Cart) {

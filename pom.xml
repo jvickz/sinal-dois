@@ -12,7 +12,8 @@
     <groupId>com.jvmarinho</groupId>
     <artifactId>reserva-estoque</artifactId>
     <version>1.0.0</version>
-    <name>Reserva de Estoque</name>
+    <name>Sinal Dois</name>
+    <description>Loja de eletrônicos com pedidos e reserva de estoque.</description>
     <properties>
         <java.version>21</java.version>
         <springdoc.version>3.2.1</springdoc.version>

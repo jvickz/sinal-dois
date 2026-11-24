@@ -3,7 +3,7 @@ import {
   ArrowRight,
   Boxes,
   ClipboardList,
-  Coffee,
+  KeyRound,
   LogOut,
   Package,
   Truck,
@@ -77,7 +77,7 @@ function Login({ session, update }: OpsProps) {
         </button>
       </form>
       <aside className="credentials">
-        <Coffee size={24} />
+        <KeyRound size={24} />
         <h2>Conta de demonstração</h2>
         <p>
           Use estas credenciais para acompanhar o estoque e expedir os pedidos
@@ -299,7 +299,7 @@ export function Operations(props: OpsProps) {
     <section className="wrap page">
       <div className="page-heading">
         <span className="eyebrow">
-          <ClipboardList size={16} /> CASA TORRA
+          <ClipboardList size={16} /> SINAL DOIS
         </span>
         <h1>
           Operações<span>.</span>

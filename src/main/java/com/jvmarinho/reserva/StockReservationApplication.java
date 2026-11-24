@@ -13,8 +13,8 @@ import tools.jackson.databind.cfg.CoercionAction;
 import tools.jackson.databind.cfg.CoercionInputShape;
 import tools.jackson.databind.type.LogicalType;
 
-@OpenAPIDefinition(info = @Info(title = "Reserva de Estoque", version = "1.0",
-        description = "Consulte o saldo e gerencie reservas temporárias de estoque."))
+@OpenAPIDefinition(info = @Info(title = "Sinal Dois", version = "1.0",
+        description = "Loja de eletrônicos com catálogo, reservas de estoque, pagamento simulado e expedição de pedidos."))
 @SpringBootApplication
 @EnableScheduling
 public class StockReservationApplication {

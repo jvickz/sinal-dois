@@ -17,8 +17,9 @@ import static com.jvmarinho.reserva.CommerceModels.*;
 @Repository
 class CommerceRepository {
     private static final String CATALOG = """
-            SELECT i.sku, c.name, c.description, c.category, c.price_cents, i.available, c.image_key
+            SELECT i.sku, c.name, c.description, c.category, c.price_cents, i.available, c.image_key, c.brand, c.specs
             FROM commerce_catalog c JOIN inventory i ON i.sku = c.sku
+            WHERE c.active
             """;
     private final JdbcClient jdbc;
 
@@ -27,12 +28,12 @@ class CommerceRepository {
     }
 
     List<Product> catalog() {
-        return jdbc.sql(CATALOG + "ORDER BY CASE i.sku WHEN 'CAFE-250G' THEN 0 WHEN 'FILTRO-01' THEN 1 ELSE 2 END, i.sku")
+        return jdbc.sql(CATALOG + "ORDER BY c.display_order, c.sku")
                 .query(CommerceRepository::product).list();
     }
 
     Optional<Product> product(String sku) {
-        return jdbc.sql(CATALOG + "WHERE i.sku = :sku").param("sku", sku).query(CommerceRepository::product).optional();
+        return jdbc.sql(CATALOG + "AND c.sku = :sku").param("sku", sku).query(CommerceRepository::product).optional();
     }
 
     Optional<UUID> claimCheckout(UUID buyerId, String key) {
@@ -152,7 +153,8 @@ class CommerceRepository {
 
     private static Product product(ResultSet row, int ignored) throws SQLException {
         return new Product(row.getString("sku"), row.getString("name"), row.getString("description"),
-                row.getString("category"), row.getInt("price_cents"), row.getInt("available"), row.getString("image_key"));
+                row.getString("category"), row.getInt("price_cents"), row.getInt("available"), row.getString("image_key"),
+                row.getString("brand"), List.of((String[]) row.getArray("specs").getArray()));
     }
 
     private static Header header(ResultSet row, int ignored) throws SQLException {

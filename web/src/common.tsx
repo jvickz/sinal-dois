@@ -5,7 +5,7 @@ import {
   type AnchorHTMLAttributes,
   type ReactNode,
 } from 'react'
-import { AlertCircle, Coffee, LoaderCircle, Sprout } from 'lucide-react'
+import { AlertCircle, LoaderCircle, Package } from 'lucide-react'
 import {
   ApiError,
   errorMessage,
@@ -55,17 +55,17 @@ export function Link({
 }
 export function readStored<T>(key: string, fallback: T): T {
   try {
-    return (
-      JSON.parse(sessionStorage.getItem('casa-torra:' + key) ?? 'null') ??
-      fallback
-    )
+    const current = sessionStorage.getItem('sinaldois:' + key)
+    const stored = current ?? sessionStorage.getItem('casa-torra:' + key)
+    return JSON.parse(stored ?? 'null') ?? fallback
   } catch {
     return fallback
   }
 }
 export function saveStored(key: string, value: unknown) {
   try {
-    sessionStorage.setItem('casa-torra:' + key, JSON.stringify(value))
+    sessionStorage.setItem('sinaldois:' + key, JSON.stringify(value))
+    sessionStorage.removeItem('casa-torra:' + key)
   } catch {
     /* Permite navegar com armazenamento bloqueado. */
   }
@@ -120,11 +120,9 @@ export function useResource<T>(load: () => Promise<T>, pollMs?: number) {
 }
 export function Brand() {
   return (
-    <Link href={paths.shop} aria-label="Casa Torra, início" className="brand">
-      <span className="brand-symbol">
-        <Sprout size={23} strokeWidth={1.6} />
-      </span>
-      Casa Torra<span className="brand-dot">.</span>
+    <Link href={paths.shop} aria-label="Sinal Dois, início" className="brand">
+      <img className="brand-symbol" src="/marca.svg" alt="" width="28" height="26" />
+      <span>sinaldois</span>
     </Link>
   )
 }
@@ -170,7 +168,7 @@ export function Empty({
 }) {
   return (
     <div className="empty">
-      <span className="empty-icon">{icon ?? <Coffee />}</span>
+      <span className="empty-icon">{icon ?? <Package />}</span>
       <h2>{title}</h2>
       {children}
     </div>
@@ -195,30 +193,30 @@ export function StatusBadge({
   )
 }
 const imageKeys = new Set([
-  'cafe',
-  'filtro',
-  'caneca',
-  'moedor',
-  'balanca',
-  'prensa',
+  'iphone',
+  'ps5',
+  'macbook',
+  'thinkpad',
+  'switch',
+  'macmini',
 ])
 export function ProductImage({
   product,
 }: {
   product: Pick<Product, 'imageKey'>
 }) {
-  const [failed, setFailed] = useState(false)
+  const [failedKey, setFailedKey] = useState<string>()
   return (
     <div className="product-image">
-      {!failed && imageKeys.has(product.imageKey) ? (
+      {failedKey !== product.imageKey && imageKeys.has(product.imageKey) ? (
         <img
           alt=""
           loading="lazy"
           src={'/images/' + product.imageKey + '.webp'}
-          onError={() => setFailed(true)}
+          onError={() => setFailedKey(product.imageKey)}
         />
       ) : (
-        <Coffee aria-hidden="true" className="image-fallback" />
+        <Package aria-hidden="true" className="image-fallback" />
       )}
     </div>
   )

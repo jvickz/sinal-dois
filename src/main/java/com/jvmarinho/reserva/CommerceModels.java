@@ -30,7 +30,7 @@ final class CommerceModels {
     enum Outcome { APPROVED, DECLINED }
 
     record Product(String sku, String name, String description, String category,
-                   int priceCents, int available, String imageKey) {}
+                   int priceCents, int available, String imageKey, String brand, List<String> specs) {}
 
     record Header(UUID id, UUID buyerId, Status status, long totalCents, Instant createdAt, Instant expiresAt) {
         Header withStatus(Status next) {

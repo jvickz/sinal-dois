@@ -17,6 +17,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,8 +54,8 @@ import static org.awaitility.Awaitility.await;
 class CommerceApiIT {
     private static final String ORDERS = "/orders";
     private static final Instant START = Instant.parse("2026-11-23T15:00:00Z");
-    private static final String CAFE = "{\"items\":[{\"sku\":\"CAFE-250G\",\"quantity\":1}]}";
-    private static final String FILTERS = "{\"items\":[{\"sku\":\"FILTRO-01\",\"quantity\":2}]}";
+    private static final String PHONE = "{\"items\":[{\"sku\":\"IPHONE-15-128\",\"quantity\":1}]}";
+    private static final String CONSOLES = "{\"items\":[{\"sku\":\"PS5-SLIM\",\"quantity\":2}]}";
 
     @Container
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18-alpine");
@@ -83,8 +84,81 @@ class CommerceApiIT {
         clock.set(START);
         jdbc.sql("TRUNCATE commerce_payment_events, commerce_order_history, commerce_order_items, "
                 + "commerce_checkout_requests, commerce_orders").update();
-        jdbc.sql("UPDATE inventory SET available = CASE sku WHEN 'CAFE-250G' THEN 1 ELSE 10 END "
-                + "WHERE sku IN ('CAFE-250G', 'FILTRO-01')").update();
+        jdbc.sql("UPDATE inventory SET available = CASE sku WHEN 'IPHONE-15-128' THEN 1 ELSE 10 END "
+                + "WHERE sku IN ('IPHONE-15-128', 'PS5-SLIM')").update();
+    }
+
+    @Test
+    void catalogListsTheSixDevicesWithTechnicalSpecs() throws Exception {
+        try (var buyer = new Browser()) {
+            var response = buyer.send("GET", "/catalog", null, null);
+            assertThat(response.statusCode()).isEqualTo(200);
+            var products = json(response);
+            assertThat(products.values()).extracting(product -> product.path("sku").asString())
+                    .containsExactly("IPHONE-15-128", "PS5-SLIM", "MACBOOK-AIR-M3", "THINKPAD-T14", "SWITCH-OLED", "MAC-MINI-M4");
+            assertThat(products.at("/0/brand").asString()).isEqualTo("Apple");
+            assertThat(products.at("/0/specs").values()).extracting(spec -> spec.asString())
+                    .contains("128 GB", "A16 Bionic");
+            assertThat(products.at("/0/priceCents").asInt()).isEqualTo(429900);
+        }
+    }
+
+    @Test
+    void retiredProductStillSupportsExistingOrderReplaysAndStockRelease() throws Exception {
+        try (var buyer = new Browser()) {
+            buyer.start();
+            var first = buyer.send("POST", ORDERS, PHONE, "before-retirement");
+            assertThat(first.statusCode()).isEqualTo(201);
+            String id = json(first).path("id").asString();
+            jdbc.sql("UPDATE commerce_catalog SET active = false WHERE sku = 'IPHONE-15-128'").update();
+            try {
+                assertThat(json(buyer.send("GET", "/catalog", null, null)).values())
+                        .noneMatch(product -> product.path("sku").asString().equals("IPHONE-15-128"));
+                var attempt = buyer.send("POST", ORDERS, PHONE, "after-retirement");
+                assertThat(attempt.statusCode()).isEqualTo(404);
+                assertThat(json(attempt).path("code").asString()).isEqualTo("SKU_NOT_FOUND");
+                var replay = buyer.send("POST", ORDERS, PHONE, "before-retirement");
+                assertThat(replay.statusCode()).isEqualTo(200);
+                assertThat(json(replay).at("/items/0/name").asString()).isEqualTo("iPhone 15");
+                assertThat(buyer.send("POST", ORDERS + "/" + id + "/cancel", null, null).statusCode()).isEqualTo(200);
+                assertThat(stock("IPHONE-15-128")).isEqualTo(1);
+            } finally {
+                jdbc.sql("UPDATE commerce_catalog SET active = true WHERE sku = 'IPHONE-15-128'").update();
+            }
+        }
+    }
+
+    @Test
+    void upgradesAnExistingCatalogWithoutResettingInventoryOrHistoricalOrderLines() {
+        var flyway = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .defaultSchema("catalog_upgrade").locations("classpath:db/migration");
+        flyway.target("3").load().migrate();
+        jdbc.sql("INSERT INTO catalog_upgrade.inventory (sku, available) VALUES ('CAFE-250G', 7), ('PS5-SLIM', 3)").update();
+        jdbc.sql("""
+                INSERT INTO catalog_upgrade.commerce_catalog (sku, name, description, category, price_cents, image_key)
+                VALUES ('CAFE-250G', 'Café Serra Clara', 'Grãos', 'Cafés', 4890, 'cafe')
+                """).update();
+        UUID id = UUID.randomUUID();
+        jdbc.sql("""
+                INSERT INTO catalog_upgrade.commerce_orders (id, buyer_id, status, total_cents, created_at, expires_at)
+                VALUES (:id, :buyer, 'PAID', 4890, now(), now() + interval '2 minutes')
+                """).param("id", id).param("buyer", UUID.randomUUID()).update();
+        jdbc.sql("""
+                INSERT INTO catalog_upgrade.commerce_order_items (order_id, sku, name, quantity, unit_price_cents)
+                VALUES (:id, 'CAFE-250G', 'Café Serra Clara', 1, 4890)
+                """).param("id", id).update();
+
+        flyway.target("latest").locations("classpath:db/migration", "classpath:db/demo").load().migrate();
+        assertThat(jdbc.sql("SELECT available FROM catalog_upgrade.inventory WHERE sku = 'CAFE-250G'")
+                .query(Integer.class).single()).isEqualTo(7);
+        assertThat(jdbc.sql("SELECT available FROM catalog_upgrade.inventory WHERE sku = 'PS5-SLIM'")
+                .query(Integer.class).single()).isEqualTo(3);
+        assertThat(jdbc.sql("SELECT active FROM catalog_upgrade.commerce_catalog WHERE sku = 'CAFE-250G'")
+                .query(Boolean.class).single()).isFalse();
+        assertThat(jdbc.sql("SELECT count(*) FROM catalog_upgrade.commerce_catalog WHERE active")
+                .query(Long.class).single()).isEqualTo(6);
+        assertThat(jdbc.sql("SELECT name FROM catalog_upgrade.commerce_order_items WHERE order_id = :id")
+                .param("id", id).query(String.class).single()).isEqualTo("Café Serra Clara");
     }
 
     @Test
@@ -92,13 +166,13 @@ class CommerceApiIT {
         try (var first = new Browser(); var second = new Browser()) {
             first.start();
             second.start();
-            var one = first.async("POST", ORDERS, CAFE, "last-item");
-            var two = second.async("POST", ORDERS, CAFE, "last-item");
+            var one = first.async("POST", ORDERS, PHONE, "last-item");
+            var two = second.async("POST", ORDERS, PHONE, "last-item");
             var results = List.of(one.get(10, TimeUnit.SECONDS), two.get(10, TimeUnit.SECONDS));
             assertThat(results).extracting(HttpResponse::statusCode).containsExactlyInAnyOrder(201, 409);
             var losing = results.stream().filter(response -> response.statusCode() == 409).findFirst().orElseThrow();
             assertThat(json(losing).path("code").asString()).isEqualTo("INSUFFICIENT_STOCK");
-            assertThat(stock("CAFE-250G")).isZero();
+            assertThat(stock("IPHONE-15-128")).isZero();
             assertThat(jdbc.sql("SELECT count(*) FROM commerce_orders").query(Long.class).single()).isEqualTo(1);
         }
     }
@@ -108,11 +182,11 @@ class CommerceApiIT {
         try (var buyer = new Browser()) {
             buyer.start();
             var unavailableBasket = """
-                    {"items":[{"sku":"CAFE-250G","quantity":1},{"sku":"FILTRO-01","quantity":11}]}
+                    {"items":[{"sku":"IPHONE-15-128","quantity":1},{"sku":"PS5-SLIM","quantity":11}]}
                     """;
             assertThat(buyer.send("POST", ORDERS, unavailableBasket, "retry").statusCode()).isEqualTo(409);
-            assertThat(stock("CAFE-250G")).isEqualTo(1);
-            assertThat(stock("FILTRO-01")).isEqualTo(10);
+            assertThat(stock("IPHONE-15-128")).isEqualTo(1);
+            assertThat(stock("PS5-SLIM")).isEqualTo(10);
             var availableBasket = unavailableBasket.replace("11", "2");
             var created = buyer.send("POST", ORDERS, availableBasket, "retry");
             assertThat(created.statusCode()).isEqualTo(201);
@@ -120,8 +194,8 @@ class CommerceApiIT {
             var replay = buyer.send("POST", ORDERS, availableBasket, "retry");
             assertThat(replay.statusCode()).isEqualTo(200);
             assertThat(json(replay).path("id")).isEqualTo(json(created).path("id"));
-            assertThat(stock("FILTRO-01")).isEqualTo(8);
-            assertThat(buyer.send("POST", ORDERS, FILTERS, "retry").statusCode()).isEqualTo(409);
+            assertThat(stock("PS5-SLIM")).isEqualTo(8);
+            assertThat(buyer.send("POST", ORDERS, CONSOLES, "retry").statusCode()).isEqualTo(409);
         }
     }
 
@@ -130,7 +204,7 @@ class CommerceApiIT {
         try (var buyer = new Browser(); var operator = new Browser()) {
             buyer.start();
             operator.start();
-            String id = buyer.create(CAFE);
+            String id = buyer.create(PHONE);
             assertThat(operator.send("GET", ORDERS + "/" + id, null, null).statusCode()).isEqualTo(404);
             assertThat(operator.send("GET", "/operator/orders", null, null).statusCode()).isEqualTo(401);
             assertThat(operator.send("POST", "/operator/orders/" + id + "/ship", null, null).statusCode()).isEqualTo(401);
@@ -151,7 +225,7 @@ class CommerceApiIT {
             var order = json(buyer.send("GET", ORDERS + "/" + id, null, null));
             assertThat(order.path("status").asString()).isEqualTo("SHIPPED");
             assertThat(order.path("timeline").size()).isEqualTo(4);
-            assertThat(stock("CAFE-250G")).isZero();
+            assertThat(stock("IPHONE-15-128")).isZero();
         }
     }
 
@@ -159,16 +233,16 @@ class CommerceApiIT {
     void rejectionAndExpiryReleaseTheWholeOrderExactlyOnce() throws Exception {
         try (var buyer = new Browser()) {
             buyer.start();
-            String declined = buyer.create(FILTERS);
+            String declined = buyer.create(CONSOLES);
             String event = payment("DECLINED");
             assertThat(buyer.send("POST", ORDERS + "/" + declined + "/payment-events", event, null).statusCode()).isEqualTo(202);
             assertThat(buyer.send("POST", ORDERS + "/" + declined + "/payment-events", event, null).statusCode()).isEqualTo(202);
             process(event);
             process(event);
             assertThat(buyer.status(declined)).isEqualTo("PAYMENT_FAILED");
-            assertThat(stock("FILTRO-01")).isEqualTo(10);
+            assertThat(stock("PS5-SLIM")).isEqualTo(10);
 
-            String expired = buyer.create(FILTERS);
+            String expired = buyer.create(CONSOLES);
             clock.set(START.plusSeconds(120));
             String lateApproval = payment("APPROVED");
             assertThat(buyer.send("POST", ORDERS + "/" + expired + "/payment-events", lateApproval, null)
@@ -177,7 +251,7 @@ class CommerceApiIT {
             var order = json(buyer.send("GET", ORDERS + "/" + expired, null, null));
             assertThat(order.path("status").asString()).isEqualTo("EXPIRED");
             assertThat(order.path("timeline").size()).isEqualTo(3);
-            assertThat(stock("FILTRO-01")).isEqualTo(10);
+            assertThat(stock("PS5-SLIM")).isEqualTo(10);
         }
     }
 
@@ -185,9 +259,9 @@ class CommerceApiIT {
     void anotherInstanceRecoversQueuedApprovalsAndKeepsTheBuyerSession() throws Exception {
         try (var buyer = new Browser()) {
             buyer.start();
-            String older = buyer.create(FILTERS);
+            String older = buyer.create(CONSOLES);
             clock.set(START.plusSeconds(60));
-            String newer = buyer.create(FILTERS);
+            String newer = buyer.create(CONSOLES);
             for (String id : List.of(older, newer)) {
                 assertThat(buyer.send("POST", ORDERS + "/" + id + "/payment-events", payment("APPROVED"), null)
                         .statusCode()).isEqualTo(202);
@@ -209,7 +283,7 @@ class CommerceApiIT {
                     var expired = json(buyer.send("GET", ORDERS + "/" + older, null, null));
                     assertThat(expired.path("status").asString()).isEqualTo("EXPIRED");
                     assertThat(expired.at("/timeline/2/type").asString()).isEqualTo("PAYMENT_IGNORED");
-                    assertThat(stock("FILTRO-01")).isEqualTo(8);
+                    assertThat(stock("PS5-SLIM")).isEqualTo(8);
                 });
             }
         }
@@ -219,14 +293,14 @@ class CommerceApiIT {
     void sessionGuardsMutationsAndCancellationRestocks() throws Exception {
         try (var buyer = new Browser()) {
             buyer.start();
-            assertThat(buyer.client.send(buyer.request("POST", ORDERS, CAFE, "no-csrf", false),
+            assertThat(buyer.client.send(buyer.request("POST", ORDERS, PHONE, "no-csrf", false),
                     HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(403);
-            String id = buyer.create(CAFE);
-            assertThat(stock("CAFE-250G")).isZero();
+            String id = buyer.create(PHONE);
+            assertThat(stock("IPHONE-15-128")).isZero();
             assertThat(buyer.send("POST", ORDERS + "/" + id + "/cancel", null, null).statusCode()).isEqualTo(200);
             assertThat(buyer.send("POST", ORDERS + "/" + id + "/cancel", null, null).statusCode()).isEqualTo(200);
             assertThat(buyer.status(id)).isEqualTo("CANCELLED");
-            assertThat(stock("CAFE-250G")).isEqualTo(1);
+            assertThat(stock("IPHONE-15-128")).isEqualTo(1);
         }
     }
 

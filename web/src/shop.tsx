@@ -1,10 +1,8 @@
 import { useState } from 'react'
 import {
-  ArrowDown,
   ArrowLeft,
   ArrowRight,
-  Coffee,
-  Leaf,
+  ReceiptText,
   Minus,
   Plus,
   ShoppingBag,
@@ -23,6 +21,7 @@ import {
   Link,
   Loading,
   Notice,
+  Brand,
   ProductImage,
   navigate,
   paths,
@@ -30,145 +29,16 @@ import {
   saveStored,
 } from './common'
 
+export { Storefront as Shop } from './storefront'
+
 export type Cart = Record<string, number>
-interface StockProps {
+export interface StockProps {
   catalog: Product[] | null
   error: string
   reload: () => void
   cart: Cart
   change: (sku: string, quantity: number) => void
 }
-const stockLabel = (available: number) =>
-  available === 0
-    ? 'Esgotado'
-    : available === 1
-      ? 'Última unidade'
-      : available + ' disponíveis'
-const shelf = ['cafe', 'filtro', 'caneca', 'moedor', 'balanca', 'prensa']
-
-export function Shop({ catalog, error, reload, cart, change }: StockProps) {
-  const [category, setCategory] = useState<string | null>(null)
-  const [message, setMessage] = useState('')
-  const categories = Array.from(
-    new Set((catalog ?? []).map((product) => product.category)),
-  )
-  const visible = (catalog ?? [])
-    .filter((product) => !category || product.category === category)
-    .sort((a, b) => shelf.indexOf(a.imageKey) - shelf.indexOf(b.imageKey))
-  return (
-    <>
-      <section className="hero" aria-labelledby="hero-title">
-        <div className="hero-copy">
-          <span className="eyebrow">
-            <span className="rule" /> CAFÉS & UTENSÍLIOS
-          </span>
-          <h1 id="hero-title">
-            O ritual <br />
-            do <em>café.</em>
-          </h1>
-          <p>
-            Do grão à xícara, uma seleção para preparar e saborear seu café em
-            casa.
-          </p>
-          <a className="button primary" href="#catalogo">
-            Explorar a seleção <ArrowDown size={16} />
-          </a>
-        </div>
-        <div
-          className="hero-photo"
-          role="img"
-          aria-label="Café passado em coador de cerâmica sobre uma jarra de vidro, à luz da manhã"
-        />
-      </section>
-      <section
-        id="catalogo"
-        className="catalog-section wrap"
-        aria-labelledby="catalog-title"
-      >
-        <div className="section-title">
-          <h2 id="catalog-title">
-            Na prateleira<span>.</span>
-          </h2>
-          {catalog && (
-            <span className="result-count">
-              {visible.length} {visible.length === 1 ? 'produto' : 'produtos'}
-            </span>
-          )}
-        </div>
-        {!!categories.length && (
-          <div className="filters" aria-label="Categorias de produtos">
-            {[null, ...categories].map((value) => (
-              <button
-                key={value ?? 'all'}
-                aria-pressed={value === category}
-                onClick={() => setCategory(value)}
-              >
-                {value ?? 'Todos'}
-              </button>
-            ))}
-          </div>
-        )}
-        {error && <Notice retry={reload}>{error}</Notice>}
-        {!catalog && !error && <Loading>Carregando a seleção…</Loading>}
-        {catalog && !visible.length && (
-          <Empty title="Prateleira vazia">
-            <p>Nenhum produto disponível nesta seleção.</p>
-          </Empty>
-        )}
-        <div className="product-grid">
-          {visible.map((product) => (
-            <article
-              key={product.sku}
-              className="product-card"
-              data-testid={'product-' + product.sku}
-            >
-              <div className="product-visual">
-                <ProductImage product={product} />
-                <span
-                  className={
-                    'stock-sticker' + (product.available <= 1 ? ' low' : '')
-                  }
-                >
-                  <i />
-                  {stockLabel(product.available)}
-                </span>
-              </div>
-              <div className="product-details">
-                <span className="eyebrow small">{product.category}</span>
-                <h3>{product.name}</h3>
-                <p>{product.description}</p>
-                <div className="product-action">
-                  <strong>{money(product.priceCents)}</strong>
-                  <button
-                    className="add"
-                    disabled={product.available <= (cart[product.sku] ?? 0)}
-                    aria-label={'Adicionar ' + product.name + ' ao carrinho'}
-                    data-testid={'add-' + product.sku}
-                    onClick={() => {
-                      change(product.sku, (cart[product.sku] ?? 0) + 1)
-                      setMessage(product.name + ' adicionado ao carrinho.')
-                    }}
-                  >
-                    <Plus size={15} />
-                    {product.available === 0
-                      ? 'Esgotado'
-                      : (cart[product.sku] ?? 0) >= product.available
-                        ? 'No carrinho'
-                        : 'Adicionar'}
-                  </button>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-        <div role="status" className="sr-only">
-          {message}
-        </div>
-      </section>
-    </>
-  )
-}
-
 export function CartPage({
   catalog,
   error,
@@ -245,7 +115,7 @@ export function CartPage({
       {catalog &&
         (entries.length === 0 ? (
           <Empty icon={<ShoppingBag />} title="Seu carrinho está vazio">
-            <p>Escolha um café ou utensílio para começar seu pedido.</p>
+            <p>Escolha um eletrônico no catálogo para começar seu pedido.</p>
             <Link className="button primary" href={paths.shop}>
               Explorar a loja <ArrowRight size={16} />
             </Link>
@@ -310,7 +180,7 @@ export function CartPage({
               ))}
             </div>
             <aside className="panel summary">
-              <Leaf size={23} />
+              <ReceiptText size={23} />
               <h2>Resumo do pedido</h2>
               <div className="total">
                 <span>Total</span>
@@ -340,10 +210,7 @@ export function Footer() {
   return (
     <footer>
       <div className="wrap footer-inner">
-        <span className="footer-name">
-          <Coffee size={17} />
-          Casa Torra
-        </span>
+        <Brand />
         <span>Loja demonstrativa · Pagamentos simulados</span>
       </div>
     </footer>

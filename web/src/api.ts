@@ -15,6 +15,8 @@ export interface Product {
   priceCents: number
   available: number
   imageKey: string
+  brand: string
+  specs: string[]
 }
 export interface OrderItem {
   sku: string
@@ -57,7 +59,7 @@ function renewBuyerSession(): Promise<void> {
     renewal = request<Session>('/session')
       .then((session) => {
         window.dispatchEvent(
-          new CustomEvent('casa-torra:session-ready', { detail: session }),
+          new CustomEvent('sinaldois:session-ready', { detail: session }),
         )
       })
       .finally(() => {
@@ -88,7 +90,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
         path.startsWith('/operator/') &&
         path !== '/operator/session')
     ) {
-      window.dispatchEvent(new Event('casa-torra:session'))
+      window.dispatchEvent(new Event('sinaldois:session'))
     }
     if (response.status === 403) {
       throw new ApiError(
